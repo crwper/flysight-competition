@@ -22,10 +22,12 @@ F_USB        = $(F_CPU)
 OPTIMIZATION = s
 TARGET       = flysight
 SRC          = src/Main.c                                                  \
+	           src/avr-asm-macros.S                                        \
 	           src/Config.c                                                \
 	           src/Debug.c                                                 \
 	           src/Descriptors.c                                           \
 	           src/Log.c                                                   \
+	           src/md5-asm.S                                               \
 	           src/Power.c                                                 \
 	           src/Signature.c                                             \
 	           src/Time.c                                                  \
