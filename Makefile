@@ -27,7 +27,6 @@ SRC          = src/Main.c                                                  \
 	           src/Debug.c                                                 \
 	           src/Descriptors.c                                           \
 	           src/Log.c                                                   \
-	           src/md5-asm.S                                               \
 	           src/Power.c                                                 \
 	           src/Signature.c                                             \
 	           src/Time.c                                                  \
@@ -35,6 +34,10 @@ SRC          = src/Main.c                                                  \
 	           src/uart.c                                                  \
 	           src/UBX.c                                                   \
 	           src/UsbInterface.c                                          \
+	           src/bigint/bigint_asm.S                                     \
+	           src/bigint/bigint-stub.c                                    \
+	           src/md5/md5-asm.S                                           \
+	           src/rsa/rsa_basic.c                                         \
 	           src/Lib/MMC.c                                               \
 	           src/Lib/SCSI.c                                              \
 	           vendor/FatFS/ff.c                                           \
@@ -42,7 +45,7 @@ SRC          = src/Main.c                                                  \
 	           $(LUFA_SRC_USB)                                             \
 	           $(LUFA_SRC_USBCLASS) 
 LUFA_PATH    = vendor/lufa/LUFA
-CC_FLAGS     = -DUSE_LUFA_CONFIG_HEADER -Isrc -Isrc/Config/ -Ivendor -fdata-sections $(VERSION_OPT)
+CC_FLAGS     = -DUSE_LUFA_CONFIG_HEADER -Isrc -Isrc/Config/ -Isrc/md5/ -Isrc/bigint/ -Isrc/rsa/ -Ivendor -fdata-sections $(VERSION_OPT)
 LD_FLAGS     =
 
 # Default target

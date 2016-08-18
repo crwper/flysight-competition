@@ -7,10 +7,12 @@
 #include <avr/interrupt.h>
 #include <avr/pgmspace.h>
 
+#include "md5/md5.h"
+#include "rsa/rsa_basic.h"
+
 #include "Board/LEDs.h"
 #include "Log.h"
 #include "Main.h"
-#include "md5.h"
 #include "Power.h"
 #include "Timer.h"
 #include "uart.h"
@@ -741,7 +743,13 @@ static void UBX_UpdateSignature(
 {
 	md5_ctx_t saved_md5_ctx;
 	md5_hash_t md5_hash;
+	
+	uint8_t swapped_hash[MD5_HASH_BYTES];
+	size_t i;
 
+	bigint_t data;
+	rsa_publickey_t key;
+	
 	// Handle complete blocks
 	while (len > UBX_md5_block_free)
 	{
@@ -766,7 +774,21 @@ static void UBX_UpdateSignature(
 	// Restore MD5 context
 	UBX_md5_ctx = saved_md5_ctx;
 	
-	// Now do something with the hash
+	// MD5 hash is most significant byte first
+	// Bigint for RSA is least significant byte first
+	// Need to swap byte order of hash before encrypting
+	
+	for (i = 0; i < MD5_HASH_BYTES; ++i)
+	{
+		swapped_hash[i] = md5_hash[MD5_HASH_BYTES - i - 1];
+	}
+	
+	// Encrypt the hash
+	data.length_W = MD5_HASH_BITS / BIGINT_WORD_SIZE;
+	data.info = 0;
+	data.wordv = (bigint_word_t *) swapped_hash;
+	
+	rsa_enc(&data, &key);
 }
 
 void UBX_Task(void)
