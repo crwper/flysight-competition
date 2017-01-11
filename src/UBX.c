@@ -1,5 +1,6 @@
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <util/delay.h>
@@ -7,8 +8,20 @@
 #include <avr/interrupt.h>
 #include <avr/pgmspace.h>
 
-#include "md5/md5.h"
-#include "rsa/rsa_basic.h"
+#include "noekeon.h"
+#include "noekeon_prng.h"
+#include "bigint.h"
+#include "bigint_io.h"
+#include "nist_p192.h"
+#include "ecc.h"
+#include "ecdsa_sign.h"
+
+#include "hfal_sha1.h"
+#include "hfal_sha224.h"
+#include "hfal_sha256.h"
+#include "hfal_sha384.h"
+#include "hfal_sha512.h"
+#include "hfal-basic.h"
 
 #include "Board/LEDs.h"
 #include "Log.h"
@@ -279,9 +292,11 @@ static enum
 }
 UBX_state = st_idle;
 
+#if 0
 static md5_ctx_t UBX_md5_ctx;
 static uint8_t   UBX_md5_block[MD5_BLOCK_BYTES];
 static uint8_t   UBX_md5_block_free = MD5_BLOCK_BYTES;
+#endif
 
 extern int disk_is_ready(void);
 
@@ -733,10 +748,13 @@ void UBX_Init(void)
 		while (1);
 	}
 
+#if 0
 	// Initialize cryptography library
 	md5_init(&UBX_md5_ctx);
+#endif
 }
 
+#if 0
 static void UBX_UpdateSignature(
 		const char *ptr,
 		size_t len)
@@ -789,6 +807,135 @@ static void UBX_UpdateSignature(
 	data.wordv = (bigint_word_t *) swapped_hash;
 	
 	rsa_enc(&data, &key);
+}
+#endif
+
+uint8_t prng_get_byte(void){
+    return random8();
+}
+
+void hash_mem_P(const hfdesc_t *hfdesc, void *dest, const void *msg, uint16_t msg_len_b){
+    uint16_t blocksize = hfal_hash_getBlocksize(hfdesc);
+    uint8_t block[blocksize / 8];
+    hfgen_ctx_t ctx;
+    hfal_hash_init(hfdesc, &ctx);
+    while(msg_len_b > blocksize){
+        memcpy_P(block, msg, blocksize / 8);
+        msg = (uint8_t*)msg + blocksize / 8;
+        msg_len_b -= blocksize;
+        hfal_hash_nextBlock(&ctx, block);
+    }
+    memcpy_P(block, msg, (msg_len_b + 7) / 8);
+    hfal_hash_lastBlock(&ctx, block, msg_len_b);
+    hfal_hash_ctx2hash(dest,  &ctx);
+    hfal_hash_free(&ctx);
+}
+
+const uint8_t ecdsa_test_2_msg[] PROGMEM = {
+    0x66, 0xa2, 0x51, 0x3d, 0x7b, 0x60, 0x45, 0xe5,
+    0x66, 0x79, 0xb0, 0x32, 0xca, 0xd4, 0x5f, 0xb1,
+    0x82, 0x28, 0x9c, 0xa7, 0x6a, 0x88, 0xc0, 0x6d,
+    0x78, 0xc8, 0x5f, 0x3d, 0xd3, 0x80, 0x45, 0x90,
+    0x20, 0x5b, 0x73, 0xa7, 0x84, 0x24, 0x9a, 0x0a,
+    0x0c, 0x8b, 0xf2, 0xf2, 0x21, 0x45, 0xd1, 0x05,
+    0x21, 0x9b, 0x48, 0x0d, 0x74, 0x60, 0x7c, 0x02,
+    0xb8, 0xa6, 0xb6, 0xb4, 0x59, 0x25, 0x9e, 0x4f,
+    0xdf, 0xe2, 0xbd, 0xb4, 0xab, 0x22, 0x38, 0x01,
+    0x75, 0x35, 0x29, 0x1d, 0x7a, 0xc1, 0xab, 0xda,
+    0x66, 0xc4, 0xf6, 0xdc, 0xea, 0x9e, 0x5d, 0x0b,
+    0xf0, 0x5a, 0x93, 0x06, 0xf3, 0x33, 0xb0, 0x0e,
+    0x56, 0x34, 0x2f, 0x75, 0x53, 0x40, 0x21, 0x1a,
+    0xc2, 0x94, 0xac, 0x21, 0xa7, 0xc2, 0xb2, 0x67,
+    0x12, 0xb8, 0x79, 0x95, 0x1b, 0x2e, 0x23, 0xf6,
+    0x48, 0x7e, 0x4d, 0x39, 0x89, 0x9f, 0xe3, 0x74
+};
+
+const uint8_t ecdsa_test_2_d[] PROGMEM = {
+    0xeb, 0x8e, 0x9f, 0x04, 0x7d, 0xb5, 0x9a, 0x80,
+    0x34, 0x6f, 0xcd, 0xf1, 0xcc, 0x33, 0xbb, 0x78,
+    0xbe, 0xc6, 0xb8, 0x76, 0xaf, 0x9f, 0x4b, 0x69
+};
+
+const uint8_t ecdsa_test_2_k[] PROGMEM = {
+    0x8e, 0xd5, 0x00, 0x34, 0x08, 0x09, 0x60, 0x36,
+    0x2e, 0xfe, 0x16, 0xd0, 0x53, 0x37, 0xa2, 0xf5,
+    0x47, 0xfa, 0x11, 0xbc, 0xb1, 0xc2, 0xe8, 0x41
+};
+
+static void UBX_UpdateSignature(
+		const char *ptr,
+		size_t len)
+{
+	bigint_word_t d_w[sizeof(ecdsa_test_2_d)];
+	uint8_t rnd[sizeof(ecdsa_test_2_k)];
+	uint8_t *hash;
+	bigint_t d;
+	const hfdesc_t *hash_desc;
+	ecc_combi_point_t q;
+	ecdsa_signature_t sign;
+	ecdsa_ctx_t ctx;
+	uint8_t r;
+
+	putchar('\n');
+	d.wordv = d_w;
+	memcpy_P(rnd, ecdsa_test_2_k, sizeof(ecdsa_test_2_k));
+	memcpy_P(d_w, ecdsa_test_2_d, sizeof(ecdsa_test_2_d) * sizeof(bigint_word_t));
+	d.length_W = sizeof(ecdsa_test_2_d) / sizeof(bigint_word_t);
+	d.info = 0;
+	bigint_adjust(&d);
+
+	hash_desc = &sha224_desc; //hash_select();
+	hash = malloc(hfal_hash_getHashsize(hash_desc) / 8);
+	if(hash == NULL){
+		printf_P(PSTR("DBG: XXX <%S %s %d>\n"), PSTR(__FILE__), __func__, __LINE__);
+	}
+	hash_mem_P(hash_desc, hash, ecdsa_test_2_msg, sizeof(ecdsa_test_2_msg) * 8);
+	printf_P(PSTR("msg hash: "));
+	cli_hexdump(hash, hfal_hash_getHashsize(hash_desc) / 8);
+	putchar('\n');
+
+	ecc_chudnovsky_point_alloc(&q.chudnovsky, nist_curve_p192_p.length_W * sizeof(bigint_word_t));
+	ctx.basepoint = &nist_curve_p192_basepoint.chudnovsky;
+	ctx.priv = &d;
+	ctx.curve = &nist_curve_p192;
+
+	printf("\n  d:  ");
+	bigint_print_hex(&d);
+	printf_P(PSTR("\n  Gx: "));
+	bigint_print_hex(&nist_curve_p192_basepoint.affine.x);
+	printf_P(PSTR("\n  Gy: "));
+	bigint_print_hex(&nist_curve_p192_basepoint.affine.y);
+
+	r = ecc_chudnovsky_multiplication(&q.chudnovsky, &d, &nist_curve_p192_basepoint.chudnovsky, &nist_curve_p192);
+	if(r){
+		printf_P(PSTR("ERROR: ecc_chudnovsky_multiplication() returned: %"PRIu8"\n"), r);
+	}
+	r = ecc_chudnovsky_to_affine_point(&q.affine, &q.chudnovsky, &nist_curve_p192);
+	if(r){
+		printf_P(PSTR("ERROR: ecc_chudnovsky_to_affine_point() returned: %"PRIu8"\n"), r);
+	}
+
+	printf_P(PSTR("\n  Qx: "));
+	bigint_print_hex(&q.affine.x);
+	printf_P(PSTR("\n  Qy: "));
+	bigint_print_hex(&q.affine.y);
+	putchar('\n');
+	ctx.pub = &q.affine;
+
+	ecdsa_signature_alloc(&sign, sizeof(ecdsa_test_2_d) * sizeof(bigint_word_t));
+
+	r = ecdsa_sign_hash(&sign, hash, hfal_hash_getHashsize(hash_desc) / 8, &ctx, rnd);
+	if(r){
+		printf_P(PSTR("ERROR: ecdsa_sign_message() returned: %"PRIu8"\n"), r);
+	}
+	printf_P(PSTR("  r: "));
+	bigint_print_hex(&sign.r);
+	printf_P(PSTR("\n  s: "));
+	bigint_print_hex(&sign.s);
+
+	free(hash);
+	ecdsa_signature_free(&sign);
+	ecc_chudnovsky_point_free(&q.chudnovsky);
 }
 
 void UBX_Task(void)

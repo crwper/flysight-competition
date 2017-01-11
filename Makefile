@@ -36,16 +36,28 @@ SRC          = src/Main.c                                                  \
 	           src/Lib/MMC.c                                               \
 	           src/Lib/SCSI.c                                              \
 	           vendor/avr-crypto-lib/avr-asm-macros.S                      \
-	           vendor/avr-crypto-lib/bigint/bigint_asm.S                   \
 	           vendor/avr-crypto-lib/bigint/bigint-stub.c                  \
-	           vendor/avr-crypto-lib/md5/md5-asm.S                         \
-	           vendor/avr-crypto-lib/rsa/rsa_basic.c                       \
+	           vendor/avr-crypto-lib/bigint/bigint_asm.S                   \
+	           vendor/avr-crypto-lib/bigint/bigint_io.c                    \
+	           vendor/avr-crypto-lib/ecdsa/ecc_chudnovsky.c                \
+	           vendor/avr-crypto-lib/ecdsa/ecdsa_sign.c                    \
+	           vendor/avr-crypto-lib/ecdsa/nist_p192.c                     \
+	           vendor/avr-crypto-lib/hfal/hfal-basic.c                     \
+	           vendor/avr-crypto-lib/hfal/hfal_sha224.c                    \
+	           vendor/avr-crypto-lib/noekeon/noekeon_asm.S                 \
+	           vendor/avr-crypto-lib/noekeon/noekeon_prng.c                \
+	           vendor/avr-crypto-lib/sha2/sha2_small_common.c              \
+	           vendor/avr-crypto-lib/sha2/sha224.c                         \
+	           vendor/avr-crypto-lib/test_src/cli-basics.S                 \
+	           vendor/avr-crypto-lib/test_src/cli-hexdump.S                \
+	           vendor/avr-crypto-lib/test_src/cli-stub.c                   \
+	           vendor/avr-crypto-lib/test_src/hexdigit_tab.S               \
 	           vendor/FatFS/ff.c                                           \
 	           vendor/FatFS/mmc.c                                          \
 	           $(LUFA_SRC_USB)                                             \
 	           $(LUFA_SRC_USBCLASS) 
 LUFA_PATH    = vendor/lufa/LUFA
-CC_FLAGS     = -DUSE_LUFA_CONFIG_HEADER -Isrc -Isrc/Config/ -Ivendor -Ivendor/avr-crypto-lib -Ivendor/avr-crypto-lib\bigint -fdata-sections $(VERSION_OPT)
+CC_FLAGS     = -DUSE_LUFA_CONFIG_HEADER -Isrc -Isrc/Config/ -Ivendor -Ivendor/avr-crypto-lib -Ivendor/avr-crypto-lib/bigint -Ivendor/avr-crypto-lib/ecdsa -Ivendor/avr-crypto-lib/hfal -Ivendor/avr-crypto-lib/memxor -Ivendor/avr-crypto-lib/noekeon -Ivendor/avr-crypto-lib/sha2 -Ivendor/avr-crypto-lib/test_src -fdata-sections $(VERSION_OPT)
 LD_FLAGS     =
 
 # Default target
