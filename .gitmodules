@@ -1,3 +1,6 @@
 [submodule "vendor/lufa"]
 	path = vendor/lufa
 	url = https://github.com/abcminiuser/lufa.git
+[submodule "vendor/avr-crypto-lib"]
+	path = vendor/avr-crypto-lib
+	url = https://git.cryptolib.org/avr-crypto-lib.git
