@@ -2,14 +2,12 @@
 #include <avr/interrupt.h>
 #include <util/atomic.h>
 
-#include "Tone.h"
 #include "UBX.h"
 
 static volatile uint16_t Timer_timer = 0;
 
 ISR(TIMER3_COMPA_vect)
 {
-	Tone_Update();
 	UBX_Update();
 
 	if (Timer_timer > 0)

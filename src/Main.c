@@ -11,7 +11,6 @@
 #include "Power.h"
 #include "Signature.h"
 #include "Timer.h"
-#include "Tone.h"
 #include "uart.h"
 #include "UBX.h"
 #include "UsbInterface.h"
@@ -60,119 +59,6 @@ void SetupHardware(void)
 	
 	f_mount(0, &Main_fs);
 	Main_mmcInitialized = MMC_Init();
-	
-	Tone_Init();
-}
-
-static void ReadSingleConfigName(
-	char *fname)
-{
-	FRESULT res;
-
-	size_t  len;
-	char    *name;
-	char    *result;
-	
-	res = f_chdir("\\config");
-	res = f_open(&Main_file, fname, FA_READ);
-	if (res != FR_OK) return;
-
-	while (!f_eof(&Main_file))
-	{
-		f_gets(Config_buf, sizeof(Config_buf), &Main_file);
-
-		len = strcspn(Config_buf, ";");
-		Config_buf[len] = 0;
-		
-		name = strtok(Config_buf, " \t:");
-		if (name == 0) continue ;
-		
-		result = strtok(0, " \t:");
-		if (result == 0) continue ;
-		
-		if (!strcmp_P(name, Config_Init_File))
-		{
-			eeprom_write_block(fname, CONFIG_FNAME_ADDR, CONFIG_FNAME_LEN);
-			
-			strcpy(UBX_buf, result);
-			strcat(UBX_buf, ".wav");
-
-			Power_Hold();
-			Tone_Hold();
-			
-			Tone_Play(UBX_buf);
-			Tone_Wait();
-			
-			Tone_Release();
-			Power_Release();
-			
-			delay_ms(500);
-		}
-	}	
-
-	f_close(&Main_file);
-}
-
-static void ReadConfigNames(void)
-{
-	FRESULT res;
-	DIR dir;
-    FILINFO fno;
-
-	res = f_opendir(&dir, "\\config");
-	if (res == FR_OK)
-	{
-		for (;;)
-		{
-			res = f_readdir(&dir, &fno);
-			
-			if (res != FR_OK || fno.fname[0] == 0) break;
-			if (fno.fname[0] == '.') continue;
-			if (fno.fattrib & AM_DIR) continue;
-
-			ReadSingleConfigName(fno.fname);
-		}
-	}
-
-	eeprom_write_block("", CONFIG_FNAME_ADDR, CONFIG_FNAME_LEN);
-}
-
-static void ReadInitFile(void)
-{
-	uint8_t i;
-
-	Power_Hold();
-	Tone_Hold();
-	
-	if (UBX_init_mode == 1)			// Speech test
-	{
-		for (i = 0; i < 10; ++i)
-		{
-			UBX_buf[0] = i + '0';
-			UBX_buf[1] = 0;
-			strcat(UBX_buf, ".wav");
-
-			Tone_Play(UBX_buf);
-			Tone_Wait();
-		}
-
-		Tone_Play("dot.wav");
-		Tone_Wait();
-
-		Tone_Play("minus.wav");
-		Tone_Wait();
-	}
-	else if (UBX_init_mode == 2)	// Play a file
-	{
-		strcpy(UBX_buf, UBX_init_filename);
-		strcat(UBX_buf, ".wav");
-
-		Tone_Play(UBX_buf);
-		Tone_Wait();
-	}
-	
-	Tone_Release();
-	Power_Release();
 }
 
 int main(void)
@@ -241,17 +127,10 @@ int main(void)
 		}
 		LEDs_ChangeLEDs(LEDS_ALL_LEDS, Main_activeLED);
 
-		if (count == 1)
-		{
-			ReadConfigNames();
-		}
-		
 		Power_Hold();
 		Signature_Write();
 		Config_Read();
 		Power_Release();
-				
-		ReadInitFile();
 		
 		Timer_Init();
 		UBX_Init();
@@ -259,7 +138,6 @@ int main(void)
 		for (;;)
 		{
 			UBX_Task();
-			Tone_Task();
 		}
 	}
 }

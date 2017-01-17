@@ -12,7 +12,6 @@
 #include "Main.h"
 #include "Power.h"
 #include "Timer.h"
-#include "Tone.h"
 #include "uart.h"
 #include "UBX.h"
 
@@ -64,13 +63,6 @@
 #define UBX_MSG_VELNED      0x04
 #define UBX_MSG_TIMEUTC     0x08
 #define UBX_MSG_ALL         (UBX_MSG_POSLLH | UBX_MSG_SOL | UBX_MSG_VELNED | UBX_MSG_TIMEUTC)
-
-static const uint16_t UBX_sas_table[] PROGMEM =
-{
-	1024, 1077, 1135, 1197,
-	1265, 1338, 1418, 1505,
-	1600, 1704, 1818, 1944
-};
 
 static uint8_t  UBX_msg_class;
 static uint8_t  UBX_msg_id;
@@ -229,45 +221,11 @@ UBX_ack_nak;
 
 uint8_t  UBX_model         = 6;
 uint16_t UBX_rate          = 200;
-uint8_t  UBX_mode          = 2;
-int32_t  UBX_min           = 0;
-int32_t  UBX_max           = 300;
-
-uint8_t  UBX_mode_2        = 9;
-int32_t  UBX_min_2         = 300;
-int32_t  UBX_max_2         = 1500;
-int32_t  UBX_min_rate      = 100;
-int32_t  UBX_max_rate      = 500;
-uint8_t  UBX_flatline      = 0;
-uint8_t  UBX_limits        = 1;
-uint8_t  UBX_use_sas       = 1;
-
-uint8_t  UBX_sp_mode       = 2;
-uint8_t  UBX_sp_units      = UBX_UNITS_MPH;
-uint16_t UBX_sp_rate       = 0;
-uint8_t  UBX_sp_decimals   = 0;
-
-uint8_t  UBX_init_mode     = 0;
-char     UBX_init_filename[9];
-
-static uint16_t UBX_sp_counter = 0;
-
-uint32_t UBX_threshold     = 1000;
-uint32_t UBX_hThreshold    = 0;
-
-UBX_alarm UBX_alarms[UBX_MAX_ALARMS];
-uint8_t   UBX_num_alarms   = 0;
-uint32_t  UBX_alarm_window = 0;
 
 static uint32_t UBX_time_of_week = 0;
 static uint8_t  UBX_msg_received = 0;
 
 char UBX_buf[150];
-
-UBX_window UBX_windows[UBX_MAX_WINDOWS];
-uint8_t    UBX_num_windows = 0;
-
-int32_t UBX_dz_elev = 0;
 
 typedef struct
 {
@@ -304,15 +262,6 @@ static uint8_t UBX_read  = 0;
 static uint8_t UBX_write = 0;
 
 static volatile uint8_t UBX_hasFix = 0;
-static uint8_t UBX_firstFix = 0;
-
-static uint8_t UBX_prevFix = 0;
-static int32_t UBX_prevHMSL;
-
-static uint8_t UBX_suppress_tone = 0;
-
-static char UBX_speech_buf[16] = "\0";
-static char *UBX_speech_ptr = UBX_speech_buf;
 
 static const char UBX_header[] PROGMEM = 
 	"time,lat,lon,hMSL,velN,velE,velD,hAcc,vAcc,sAcc,heading,cAcc,gpsFix,numSV\r\n"
@@ -553,376 +502,6 @@ static void UBX_SendMessage(
 	uart_putc(ck_b);
 }
 
-static void UBX_SetTone(
-	int32_t val_1,
-	int32_t min_1,
-	int32_t max_1,
-	int32_t val_2,
-	int32_t min_2,
-	int32_t max_2)
-{
-	#define UNDER(val,min,max) ((min < max) ? (val <= min) : (val >= min))
-	#define OVER(val,min,max)  ((min < max) ? (val >= max) : (val <= max))
-
-	if (val_1 != UBX_INVALID_VALUE &&
-	    val_2 != UBX_INVALID_VALUE)
-	{
-		if (UNDER(val_2, min_2, max_2))
-		{
-			if (UBX_flatline)
-			{
-				Tone_SetRate(TONE_RATE_FLATLINE);
-			}
-			else
-			{
-				Tone_SetRate(UBX_min_rate);
-			}
-		}
-		else if (OVER(val_2, min_2, max_2))
-		{
-			Tone_SetRate(UBX_max_rate - 1);
-		}
-		else
-		{
-			Tone_SetRate(UBX_min_rate + (UBX_max_rate - UBX_min_rate) * (val_2 - min_2) / (max_2 - min_2));
-		}
-
-		if (UNDER(val_1, min_1, max_1))
-		{
-			if (UBX_limits == 0)
-			{
-				Tone_SetRate(0);
-			}
-			else if (UBX_limits == 1)
-			{
-				Tone_SetPitch(0);
-				Tone_SetChirp(0);
-			}
-			else
-			{
-				Tone_SetPitch(0);
-				Tone_SetChirp(TONE_CHIRP_MAX);
-			}
-		}
-		else if (OVER(val_1, min_1, max_1))
-		{
-			if (UBX_limits == 0)
-			{
-				Tone_SetRate(0);
-			}
-			else if (UBX_limits == 1)
-			{
-				Tone_SetPitch(TONE_MAX_PITCH - 1);
-				Tone_SetChirp(0);
-			}
-			else
-			{
-				Tone_SetPitch(TONE_MAX_PITCH - 1);
-				Tone_SetChirp(-TONE_CHIRP_MAX);
-			}
-		}
-		else
-		{
-			Tone_SetPitch(TONE_MAX_PITCH * (val_1 - min_1) / (max_1 - min_1));
-			Tone_SetChirp(0);
-		}
-	}
-	else
-	{
-		Tone_SetRate(0);
-	}
-		
-	#undef OVER
-	#undef UNDER
-}
-
-static void UBX_GetValues(
-	UBX_saved_t *current,
-	uint8_t mode, 
-	int32_t *val, 
-	int32_t *min, 
-	int32_t *max)
-{
-	uint16_t speed_mul = 1024;
-
-	if (UBX_use_sas)
-	{
-		if (current->hMSL < 0)
-		{
-			speed_mul = pgm_read_word(&UBX_sas_table[0]);
-		}
-		else if (current->hMSL >= 11534336L)
-		{
-			speed_mul = pgm_read_word(&UBX_sas_table[11]);
-		}
-		else
-		{
-			int32_t h = current->hMSL / 1024	;
-			uint16_t i = h / 1024;
-			uint16_t j = h % 1024;
-			uint16_t y1 = pgm_read_word(&UBX_sas_table[i]);
-			uint16_t y2 = pgm_read_word(&UBX_sas_table[i + 1]);
-			speed_mul = y1 + ((y2 - y1) * j) / 1024;
-		}
-	}
-
-	switch (mode)
-	{
-	case 0: // Horizontal speed
-		*val = (current->gSpeed * 1024) / speed_mul;
-		break;
-	case 1: // Vertical speed
-		*val = (current->velD * 1024) / speed_mul;
-		break;
-	case 2: // Glide ratio
-		if (current->velD != 0)
-		{
-			*val = 10000 * (int32_t) current->gSpeed / current->velD;
-			*min *= 100;
-			*max *= 100;
-		}
-		break;
-	case 3: // Inverse glide ratio
-		if (current->gSpeed != 0)
-		{
-			*val = 10000 * current->velD / (int32_t) current->gSpeed;
-			*min *= 100;
-			*max *= 100;
-		}
-		break;
-	case 4: // Total speed
-		*val = (current->speed * 1024) / speed_mul;
-		break;
-	}
-}
-
-static void UBX_SpeakValue(
-	UBX_saved_t *current)
-{
-	uint16_t speed_mul = 1024;
-	
-	char *end_ptr;
-
-	if (UBX_use_sas)
-	{
-		if (current->hMSL < 0)
-		{
-			speed_mul = pgm_read_word(&UBX_sas_table[0]);
-		}
-		else if (current->hMSL >= 11534336L)
-		{
-			speed_mul = pgm_read_word(&UBX_sas_table[11]);
-		}
-		else
-		{
-			int32_t h = current->hMSL / 1024	;
-			uint16_t i = h / 1024;
-			uint16_t j = h % 1024;
-			uint16_t y1 = pgm_read_word(&UBX_sas_table[i]);
-			uint16_t y2 = pgm_read_word(&UBX_sas_table[i + 1]);
-			speed_mul = y1 + ((y2 - y1) * j) / 1024;
-		}
-	}
-
-	switch (UBX_sp_units)
-	{
-	case UBX_UNITS_KMH:
-		speed_mul = (uint16_t) (((uint32_t) speed_mul * 18204) / 65536);
-		break;
-	case UBX_UNITS_MPH:
-		speed_mul = (uint16_t) (((uint32_t) speed_mul * 29297) / 65536);
-		break;
-	}
-
-	// Step 0: Initialize speech pointers, leaving room at the end for one unit character
-	
-	UBX_speech_ptr = UBX_speech_buf + sizeof(UBX_speech_buf) - 1;
-	end_ptr = UBX_speech_ptr;
-
-	// Step 1: Get speech value with 2 decimal places
-	
-	switch (UBX_sp_mode)
-	{
-	case 0: // Horizontal speed
-		UBX_speech_ptr = Log_WriteInt32ToBuf(UBX_speech_ptr, (current->gSpeed * 1024) / speed_mul, 2, 1, 0);
-		break;
-	case 1: // Vertical speed
-		UBX_speech_ptr = Log_WriteInt32ToBuf(UBX_speech_ptr, (current->velD * 1024) / speed_mul, 2, 1, 0);
-		break;
-	case 2: // Glide ratio
-		if (current->velD != 0)
-		{
-			UBX_speech_ptr = Log_WriteInt32ToBuf(UBX_speech_ptr, 100 * (int32_t) current->gSpeed / current->velD, 2, 1, 0);
-		}
-		break;
-	case 3: // Inverse glide ratio
-		if (current->gSpeed != 0)
-		{
-			UBX_speech_ptr = Log_WriteInt32ToBuf(UBX_speech_ptr, 100 * (int32_t) current->velD / current->gSpeed, 2, 1, 0);
-		}
-		else
-		{
-			*(--UBX_speech_ptr) = 0;
-		}
-		break;
-	case 4: // Total speed
-		UBX_speech_ptr = Log_WriteInt32ToBuf(UBX_speech_ptr, (current->speed * 1024) / speed_mul, 2, 1, 0);
-		break;
-	}
-	
-	// Step 2: Truncate to the desired number of decimal places
-
-	if (UBX_sp_decimals == 0) end_ptr -= 4;
-	else                      end_ptr -= 3 - UBX_sp_decimals;
-	
-	// Step 3: Add units if needed, e.g., *(end_ptr++) = 'k';
-	
-	switch (UBX_sp_mode)
-	{
-	case 0: // Horizontal speed
-	case 1: // Vertical speed
-	case 2: // Glide ratio
-	case 3: // Inverse glide ratio
-	case 4: // Total speed
-		break;
-	}
-	
-	// Step 4: Terminate with a null
-
-	*(end_ptr++) = 0;
-}
-
-static void UBX_UpdateAlarms(
-	UBX_saved_t *current)
-{
-	uint8_t i, suppress_tone;
-
-	suppress_tone = 0;
-
-	for (i = 0; i < UBX_num_alarms; ++i)
-	{
-		if (ABS (UBX_alarms[i].elev - current->hMSL) <= UBX_alarm_window)
-		{
-			suppress_tone = 1;
-			break;
-		}
-	}
-	
-	for (i = 0; i < UBX_num_windows; ++i)
-	{
-		if ((UBX_windows[i].bottom <= current->hMSL) && (UBX_windows[i].top >= current->hMSL))
-		{
-			suppress_tone = 1;
-			break;
-		}
-	}
-	
-	if (suppress_tone && !UBX_suppress_tone)
-	{
-		*UBX_speech_ptr = 0;
-		Tone_SetRate(0);
-		Tone_Stop();
-	}
-	
-	UBX_suppress_tone = suppress_tone;
-
-	if (UBX_prevFix)
-	{
-		int32_t min = MIN(UBX_prevHMSL, current->hMSL);
-		int32_t max = MAX(UBX_prevHMSL, current->hMSL);
-
-		for (i = 0; i < UBX_num_alarms; ++i)
-		{
-			const int32_t elev = UBX_alarms[i].elev;
-		
-			if (elev >= min && elev <  max)
-			{
-				switch (UBX_alarms[i].type)
-				{
-				case 1:	// beep
-					Tone_Beep(TONE_MAX_PITCH - 1, 0, TONE_LENGTH_125_MS);
-					break ;
-				case 2:	// chirp up
-					Tone_Beep(0, TONE_CHIRP_MAX, TONE_LENGTH_125_MS);
-					break ;
-				case 3:	// chirp down
-					Tone_Beep(TONE_MAX_PITCH - 1, -TONE_CHIRP_MAX, TONE_LENGTH_125_MS);
-					break ;
-				case 4:	// play file
-					strcpy(UBX_buf, UBX_alarms[i].filename);
-					strcat(UBX_buf, ".wav");
-					Tone_Play(UBX_buf);
-					break;
-				}
-				
-				break;
-			}
-		}
-	}
-}
-
-static void UBX_UpdateTones(
-	UBX_saved_t *current)
-{
-	static int32_t x0 = UBX_INVALID_VALUE, x1, x2;
-	
-	int32_t val_1 = UBX_INVALID_VALUE, min_1 = UBX_min, max_1 = UBX_max;
-	int32_t val_2 = UBX_INVALID_VALUE, min_2 = UBX_min_2, max_2 = UBX_max_2;
-
-	UBX_GetValues(current, UBX_mode, &val_1, &min_1, &max_1);
-
-	if (UBX_mode_2 == 8)
-	{
-		UBX_GetValues(current, UBX_mode, &val_2, &min_2, &max_2);
-		if (val_2 != UBX_INVALID_VALUE)
-		{
-			val_2 = ABS(val_2);
-		}
-	}
-	else if (UBX_mode_2 == 9)
-	{
-		x2 = x1;
-		x1 = x0;
-		x0 = val_1;
-
-		if (x0 != UBX_INVALID_VALUE && 
-			x1 != UBX_INVALID_VALUE && 
-			x2 != UBX_INVALID_VALUE)
-		{
-			val_2 = (int32_t) 1000 * (x2 - x0) / (2 * UBX_rate);
-			val_2 = (int32_t) 10000 * ABS(val_2) / ABS(max_1 - min_1);
-		}
-	}
-	else
-	{
-		UBX_GetValues(current, UBX_mode_2, &val_2, &min_2, &max_2);
-	}
-
-	if (!UBX_suppress_tone)
-	{
-		if (ABS(current->velD) >= UBX_threshold && 
-			current->gSpeed >= UBX_hThreshold)
-		{
-			UBX_SetTone(val_1, min_1, max_1, val_2, min_2, max_2);
-				
-			if (UBX_sp_rate != 0 && UBX_sp_counter >= UBX_sp_rate)
-			{
-				UBX_SpeakValue(current);
-				UBX_sp_counter = 0;
-			}
-		}
-		else
-		{
-			Tone_SetRate(0);
-		}
-	}
-
-	if (UBX_sp_counter < UBX_sp_rate)
-	{
-		UBX_sp_counter += UBX_rate;
-	}
-}
-
 static void UBX_ReceiveMessage(
 	uint8_t msg_received, 
 	uint32_t time_of_week)
@@ -943,9 +522,6 @@ static void UBX_ReceiveMessage(
 		{
 			UBX_hasFix = 1;
 
-			UBX_UpdateAlarms(current);
-			UBX_UpdateTones(current);
-
 			if (!Log_IsInitialized())
 			{
 				Power_Hold();
@@ -960,8 +536,6 @@ static void UBX_ReceiveMessage(
 
 				Log_WriteString(UBX_header);
 				UBX_state = st_flush_1;
-
-				UBX_firstFix = 1;
 			}
 
 			++UBX_write;
@@ -969,11 +543,7 @@ static void UBX_ReceiveMessage(
 		else
 		{
 			UBX_hasFix = 0;
-			Tone_SetRate(0);
 		}
-
-		UBX_prevFix = UBX_hasFix;
-		UBX_prevHMSL = current->hMSL;
 		
 		UBX_msg_received = 0;
 	}
@@ -1175,7 +745,7 @@ void UBX_Task(void)
 	switch (UBX_state)
 	{
 	case st_idle:
-		if (Tone_CanWrite() && disk_is_ready() && UBX_read != UBX_write)
+		if (disk_is_ready() && UBX_read != UBX_write)
 		{
 			current = UBX_saved + (UBX_read % UBX_BUFFER_LEN);
 
@@ -1213,66 +783,26 @@ void UBX_Task(void)
 		}
 		break;
 	case st_flush_1:
-		if (Tone_CanWrite() && disk_is_ready())
+		if (disk_is_ready())
 		{
 			f_sync_1(&Main_file);
 			UBX_state = st_flush_2;
 		}
 		break;
 	case st_flush_2:
-		if (Tone_CanWrite() && disk_is_ready())
+		if (disk_is_ready())
 		{
 			f_sync_2(&Main_file);
 			UBX_state = st_flush_3;
 		}
 		break;
 	case st_flush_3:
-		if (Tone_CanWrite() && disk_is_ready())
+		if (disk_is_ready())
 		{
 			f_sync_3(&Main_file);
 			Power_Release();
 			UBX_state = st_idle;
 		}
 		break;
-	}
-
-	if (*UBX_speech_ptr)
-	{
-		if (Tone_IsIdle() && disk_is_ready())
-		{
-			Tone_Hold();
-		
-			if (*UBX_speech_ptr == '-')
-			{
-				Tone_Play("minus.wav");
-			}
-			else if (*UBX_speech_ptr == '.')
-			{
-				Tone_Play("dot.wav");
-			}
-			else
-			{
-				UBX_buf[0] = *UBX_speech_ptr;
-				UBX_buf[1] = '.';
-				UBX_buf[2] = 'w';
-				UBX_buf[3] = 'a';
-				UBX_buf[4] = 'v';
-				UBX_buf[5] = 0;
-				
-				Tone_Play(UBX_buf);
-			}
-			
-			++UBX_speech_ptr;
-		}
-	}
-	else
-	{
-		Tone_Release();
-
-		if (UBX_firstFix && Tone_IsIdle())
-		{
-			UBX_firstFix = 0;
-			Tone_Beep(TONE_MAX_PITCH - 1, 0, TONE_LENGTH_125_MS);
-		}
 	}
 }
