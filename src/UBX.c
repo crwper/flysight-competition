@@ -274,7 +274,11 @@ static enum
 	st_idle,
 	st_flush_1,
 	st_flush_2,
-	st_flush_3
+	st_flush_3,
+	st_signature,
+	st_flush_4,
+	st_flush_5,
+	st_flush_6
 }
 UBX_state = st_idle;
 
@@ -844,6 +848,43 @@ void UBX_Task(void)
 		if (disk_is_ready())
 		{
 			f_sync_3(&Main_file);
+			UBX_state = st_signature;
+		}
+		break;
+	case st_signature:
+		if (disk_is_ready())
+		{
+			ptr = UBX_buf + sizeof(UBX_buf);
+
+			*(--ptr) = 0;
+			*(--ptr) = '\n';
+			*(--ptr) = '\r';
+
+			ptr = Log_WriteHexToBuf(ptr, &UBX_md5_hash, MD5_HASH_BYTES);
+			f_lseek(&Main_signature_file, 0);
+			f_puts(ptr, &Main_signature_file);
+
+			UBX_state = st_flush_4;
+		}
+		break;
+	case st_flush_4:
+		if (disk_is_ready())
+		{
+			f_sync_1(&Main_signature_file);
+			UBX_state = st_flush_5;
+		}
+		break;
+	case st_flush_5:
+		if (disk_is_ready())
+		{
+			f_sync_2(&Main_signature_file);
+			UBX_state = st_flush_6;
+		}
+		break;
+	case st_flush_6:
+		if (disk_is_ready())
+		{
+			f_sync_3(&Main_signature_file);
 			Power_Release();
 			UBX_state = st_idle;
 		}

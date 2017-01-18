@@ -32,6 +32,7 @@ uint8_t Main_activeLED;
 
 static FATFS    Main_fs;
        FIL      Main_file;
+       FIL      Main_signature_file;
        uint8_t  Main_buffer[MAIN_BUFFER_SIZE];
 
 static uint8_t Main_mmcInitialized;

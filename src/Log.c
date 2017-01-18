@@ -80,6 +80,27 @@ char *Log_WriteInt32ToBuf(
 	return ptr;
 }
 
+char *Log_WriteHexToBuf(
+	char       *ptr, 
+	const char *hex, 
+	size_t      len)
+{
+	char digit;
+
+	while (len-- > 0)
+	{
+		digit = hex[len] & 0xf;
+		if (digit < 10) *--ptr = '0' + digit;
+		else            *--ptr = 'a' + digit - 10;
+
+		digit = (hex[len] >> 4) & 0xf;
+		if (digit < 10) *--ptr = '0' + digit;
+		else            *--ptr = 'a' + digit - 10;
+	}
+	
+	return ptr;
+}
+
 static void Log_ToDate(
 	char    *name, 
 	uint8_t a, 
@@ -125,7 +146,7 @@ void Log_Init(
 	              ((DWORD) min           << 5)  + 
 	              ((DWORD) (sec / 2));
 
-    // create folder.
+    // create folder
     year = year % 100;
     Log_ToDate(fname, year, month, day);
 
@@ -133,7 +154,7 @@ void Log_Init(
 	res = f_mkdir(fname);
 	res = f_chdir(fname);
 
-    // create file.
+    // create file
     Log_ToDate(fname, hour, min, sec);
     fname[ 8] = '.';
     fname[ 9] = 'c';
@@ -142,6 +163,21 @@ void Log_Init(
     fname[12] = 0;
 
 	res = f_open(&Main_file, fname, FA_WRITE | FA_CREATE_ALWAYS);
+	if (res != FR_OK)
+	{
+		Main_activeLED = LEDS_RED;
+		LEDs_ChangeLEDs(LEDS_ALL_LEDS, Main_activeLED);
+		return ;
+	}
+
+    // create signature file
+    fname[ 8] = '.';
+    fname[ 9] = 't';
+    fname[10] = 'x';
+    fname[11] = 't';
+    fname[12] = 0;
+
+	res = f_open(&Main_signature_file, fname, FA_WRITE | FA_CREATE_ALWAYS);
 	if (res != FR_OK)
 	{
 		Main_activeLED = LEDS_RED;

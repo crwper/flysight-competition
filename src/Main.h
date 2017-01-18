@@ -9,6 +9,7 @@
 
 extern uint8_t Main_activeLED;
 extern FIL     Main_file;
+extern FIL     Main_signature_file;
 extern uint8_t Main_buffer[MAIN_BUFFER_SIZE];
 
 #endif
