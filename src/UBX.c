@@ -513,6 +513,54 @@ static void UBX_SendMessage(
 	uart_putc(ck_b);
 }
 
+static void UBX_UpdateSignature(
+	const char *ptr, 
+	size_t len)
+{
+	md5_ctx_t saved_md5_ctx;
+
+	// Handle complete blocks
+	while (len > UBX_md5_block_free)
+	{
+		memcpy(UBX_md5_block + MD5_BLOCK_BYTES - UBX_md5_block_free, ptr, UBX_md5_block_free);
+		ptr += UBX_md5_block_free;
+		len -= UBX_md5_block_free;
+		UBX_md5_block_free = MD5_BLOCK_BYTES;
+
+		md5_nextBlock(&UBX_md5_ctx, UBX_md5_block);
+	}
+
+	// Save MD5 context
+	saved_md5_ctx = UBX_md5_ctx;
+
+	// Handle partial block
+	memcpy(UBX_md5_block + MD5_BLOCK_BYTES - UBX_md5_block_free, ptr, len);
+	UBX_md5_block_free -= len;
+
+	md5_lastBlock(&UBX_md5_ctx, UBX_md5_block, (MD5_BLOCK_BYTES - UBX_md5_block_free) * 8);
+	md5_ctx2hash(&UBX_md5_hash, &UBX_md5_ctx);
+
+	// Restore MD5 context
+	UBX_md5_ctx = saved_md5_ctx;
+}
+
+static void UBX_UpdateSignature_P(
+	const char *str)
+{
+	char *ptr;
+	size_t len;
+	
+	ptr = UBX_buf;
+	len = 0;
+
+	while ((*(ptr++) = pgm_read_byte(str++)))
+	{
+		++len;
+	}
+	
+	UBX_UpdateSignature(UBX_buf, len);
+}
+
 static void UBX_ReceiveMessage(
 	uint8_t msg_received, 
 	uint32_t time_of_week)
@@ -546,6 +594,8 @@ static void UBX_ReceiveMessage(
 					current->sec);
 
 				Log_WriteString(UBX_header);
+				UBX_UpdateSignature_P(UBX_header);
+
 				UBX_state = st_flush_1;
 			}
 
@@ -739,37 +789,6 @@ void UBX_Init(void)
 
 	// Initialize cryptography library
 	md5_init(&UBX_md5_ctx);
-}
-
-static void UBX_UpdateSignature(
-	const char *ptr, 
-	size_t len)
-{
-	md5_ctx_t saved_md5_ctx;
-
-	// Handle complete blocks
-	while (len > UBX_md5_block_free)
-	{
-		memcpy(UBX_md5_block + MD5_BLOCK_BYTES - UBX_md5_block_free, ptr, UBX_md5_block_free);
-		ptr += UBX_md5_block_free;
-		len -= UBX_md5_block_free;
-		UBX_md5_block_free = MD5_BLOCK_BYTES;
-
-		md5_nextBlock(&UBX_md5_ctx, UBX_md5_block);
-	}
-
-	// Save MD5 context
-	saved_md5_ctx = UBX_md5_ctx;
-
-	// Handle partial block
-	memcpy(UBX_md5_block + MD5_BLOCK_BYTES - UBX_md5_block_free, ptr, len);
-	UBX_md5_block_free -= len;
-
-	md5_lastBlock(&UBX_md5_ctx, UBX_md5_block, (MD5_BLOCK_BYTES - UBX_md5_block_free) * 8);
-	md5_ctx2hash(&UBX_md5_hash, &UBX_md5_ctx);
-
-	// Restore MD5 context
-	UBX_md5_ctx = saved_md5_ctx;
 }
 
 void UBX_Task(void)
