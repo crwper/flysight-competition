@@ -15,6 +15,8 @@
 #include "uart.h"
 #include "UBX.h"
 
+#include "md5/md5.h"
+
 #define ABS(a)   ((a) < 0     ? -(a) : (a))
 #define MIN(a,b) (((a) < (b)) ?  (a) : (b))
 #define MAX(a,b) (((a) > (b)) ?  (a) : (b))
@@ -275,6 +277,11 @@ static enum
 	st_flush_3
 }
 UBX_state = st_idle;
+
+static md5_ctx_t  UBX_md5_ctx;
+static uint8_t    UBX_md5_block[MD5_BLOCK_BYTES];
+static uint8_t    UBX_md5_block_free = MD5_BLOCK_BYTES;
+static md5_hash_t UBX_md5_hash;
 
 extern int disk_is_ready(void);
 
@@ -725,6 +732,40 @@ void UBX_Init(void)
 		LEDs_ChangeLEDs(LEDS_ALL_LEDS, LEDS_RED);
 		while (1);
 	}
+
+	// Initialize cryptography library
+	md5_init(&UBX_md5_ctx);
+}
+
+static void UBX_UpdateSignature(
+	const char *ptr, 
+	size_t len)
+{
+	md5_ctx_t saved_md5_ctx;
+
+	// Handle complete blocks
+	while (len > UBX_md5_block_free)
+	{
+		memcpy(UBX_md5_block + MD5_BLOCK_BYTES - UBX_md5_block_free, ptr, UBX_md5_block_free);
+		ptr += UBX_md5_block_free;
+		len -= UBX_md5_block_free;
+		UBX_md5_block_free = MD5_BLOCK_BYTES;
+
+		md5_nextBlock(&UBX_md5_ctx, UBX_md5_block);
+	}
+
+	// Save MD5 context
+	saved_md5_ctx = UBX_md5_ctx;
+
+	// Handle partial block
+	memcpy(UBX_md5_block + MD5_BLOCK_BYTES - UBX_md5_block_free, ptr, len);
+	UBX_md5_block_free -= len;
+
+	md5_lastBlock(&UBX_md5_ctx, UBX_md5_block, (MD5_BLOCK_BYTES - UBX_md5_block_free) * 8);
+	md5_ctx2hash(&UBX_md5_hash, &UBX_md5_ctx);
+
+	// Restore MD5 context
+	UBX_md5_ctx = saved_md5_ctx;
 }
 
 void UBX_Task(void)
@@ -752,9 +793,10 @@ void UBX_Task(void)
 			Power_Hold();
 
 			ptr = UBX_buf + sizeof(UBX_buf);
-			*(--ptr) = 0;
 
+			*(--ptr) = 0;
 			*(--ptr) = '\n';
+
 			ptr = Log_WriteInt32ToBuf(ptr, current->numSV,     0, 0, '\r');
 			ptr = Log_WriteInt32ToBuf(ptr, current->gpsFix,    0, 0, ',');
 			ptr = Log_WriteInt32ToBuf(ptr, current->cAcc,   5, 1, ',');
@@ -779,6 +821,8 @@ void UBX_Task(void)
 			++UBX_read;
 
 			f_puts(ptr, &Main_file);
+			UBX_UpdateSignature(ptr, UBX_buf + sizeof(UBX_buf) - ptr - 1);
+
 			UBX_state = st_flush_1;
 		}
 		break;

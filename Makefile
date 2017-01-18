@@ -37,10 +37,11 @@ SRC          = src/Main.c                                                  \
 	           src/Lib/SCSI.c                                              \
 	           vendor/FatFS/ff.c                                           \
 	           vendor/FatFS/mmc.c                                          \
+	           vendor/avr-crypto-lib/md5/md5-asm.S                         \
 	           $(LUFA_SRC_USB)                                             \
 	           $(LUFA_SRC_USBCLASS) 
 LUFA_PATH    = vendor/lufa/LUFA
-CC_FLAGS     = -DUSE_LUFA_CONFIG_HEADER -Isrc -Isrc/Config/ -Ivendor -fdata-sections $(VERSION_OPT)
+CC_FLAGS     = -DUSE_LUFA_CONFIG_HEADER -Isrc -Isrc/Config/ -Ivendor -Ivendor/avr-crypto-lib -fdata-sections $(VERSION_OPT)
 LD_FLAGS     =
 
 # Default target
